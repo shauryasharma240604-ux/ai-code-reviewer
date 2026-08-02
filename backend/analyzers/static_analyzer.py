@@ -133,6 +133,21 @@ class StaticCodeAnalyzer:
                         "rule_id": "PY-ALG-001"
                     })
 
+            # Range off-by-one check
+            if re.search(r'range\s*\(\s*2\s*,\s*int\s*\([^)]*(\*\*|sqrt)[^)]*\)\s*\)', line):
+                if '+' not in line:
+                    findings.append({
+                        "id": f"STAT-PY-RANGE-{idx}",
+                        "line": idx,
+                        "title": "Off-by-One Range Boundary in Square Root Loop",
+                        "severity": "HIGH",
+                        "category": "Correctness",
+                        "source": "Static Analyzer",
+                        "description": "Loop `range(2, int(n ** 0.5))` excludes the square root itself, causing perfect squares like 4, 9, 25, 49 to be incorrectly identified as prime.",
+                        "suggestion": "Use `range(2, int(n ** 0.5) + 1)` to include the square root value.",
+                        "rule_id": "PY-ALG-002"
+                    })
+
 
         # Python AST Parsing
         try:

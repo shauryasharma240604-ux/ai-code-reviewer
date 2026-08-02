@@ -11,11 +11,24 @@ export function runClientSideReview(code, language = "python", snippetTitle = "U
   // Strip single-line comments for reliable code logic inspection
   const codeWithoutComments = lines.map(l => l.replace(/#.*$/, '').replace(/\/\/.*$/, '')).join('\n');
 
+  // Track loop indent levels to catch Early Return bugs
+  let insideLoopIndent = -1;
+
   lines.forEach((line, idx) => {
     const lineNum = idx + 1;
     const cleanLine = line.replace(/#.*$/, '').replace(/\/\/.*$/, '');
+    const trimmed = cleanLine.trim();
 
-    // Prime number missing boundary check (ignoring comments)
+    // Calculate leading spaces
+    const indent = line.search(/\S/);
+
+    if (/\b(for|while)\b/.test(trimmed)) {
+      insideLoopIndent = indent;
+    } else if (insideLoopIndent !== -1 && indent <= insideLoopIndent && trimmed !== '') {
+      insideLoopIndent = -1;
+    }
+
+    // 1. Prime number missing boundary check (ignoring comments)
     if (/def\s+is_prime|function\s+isPrime/i.test(line)) {
       if (!/if\s+.*(n|num|number)\s*(<=?|<)\s*[012]/.test(codeWithoutComments)) {
         findings.push({
@@ -31,17 +44,34 @@ export function runClientSideReview(code, language = "python", snippetTitle = "U
       }
     }
 
-    // Range off-by-one for sqrt prime check
-    if (cleanLine.includes("range(2, int(n ** 0.5))") || cleanLine.includes("range(2, int(math.sqrt(n)))")) {
+    // 2. Off-by-one Square Root Range Bug (flexible whitespace regex)
+    if (/range\s*\(\s*2\s*,\s*int\s*\([^)]*(\*\*|sqrt)[^)]*\)\s*\)/i.test(cleanLine)) {
+      if (!cleanLine.includes("+")) {
+        findings.push({
+          line: lineNum,
+          severity: "HIGH",
+          category: "LOGIC_BUG",
+          title: "Off-by-One Range Boundary in Square Root Loop",
+          description: "Loop `range(2, int(n ** 0.5))` excludes the square root itself, causing perfect squares like 4, 9, 25, 49 to be incorrectly identified as prime.",
+          recommendation: "Use `range(2, int(n ** 0.5) + 1)` to include the square root value.",
+          merged_source: "static",
+          senior_comment: "Off-by-one bug! Range in Python excludes the upper bound, so `range(2, 3)` only checks 2 and skips 3."
+        });
+      }
+    }
+
+    // 3. Early Return Bug inside Loop (e.g. return True inside for loop)
+    if (insideLoopIndent !== -1 && (trimmed === "return True" || trimmed === "return true")) {
+      // If return True is indented at same level as if statement inside loop
       findings.push({
         line: lineNum,
         severity: "HIGH",
         category: "LOGIC_BUG",
-        title: "Off-by-One Range Boundary in Square Root Loop",
-        description: "Loop `range(2, int(n ** 0.5))` excludes the square root itself, causing perfect squares like 4, 9, 25, 49 to be incorrectly identified as prime.",
-        recommendation: "Use `range(2, int(n ** 0.5) + 1)` to include the square root value.",
+        title: "Early Return Bug Inside Loop Execution",
+        description: "`return True` is indented inside the loop body, causing the loop to exit prematurely on the very first iteration.",
+        recommendation: "Move `return True` outside the loop body so all candidate divisors are checked.",
         merged_source: "static",
-        senior_comment: "Off-by-one bug! Range in Python excludes the upper bound, so `range(2, 3)` only checks 2 and skips 3."
+        senior_comment: "Indentation bug! Returning True inside the loop stops checking after the first iteration."
       });
     }
 
