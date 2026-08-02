@@ -1,6 +1,7 @@
 import React from 'react';
-import { Play, Sparkles, FileCode, Cpu, Trash2, RotateCcw } from 'lucide-react';
+import { Play, Sparkles, FileCode, Cpu, Trash2, Zap } from 'lucide-react';
 import { SAMPLE_SNIPPETS } from '../utils/sampleCode';
+import { repairCodeSyntax } from '../utils/universalSyntaxRepair';
 
 export default function CodeEditorView({
   code,
@@ -25,6 +26,12 @@ export default function CodeEditorView({
     setTitle('Untitled Snippet');
   };
 
+  const handleAutoFixSyntax = () => {
+    if (!code) return;
+    const fixed = repairCodeSyntax(code, language);
+    setCode(fixed);
+  };
+
   return (
     <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '0 24px' }}>
       
@@ -36,11 +43,22 @@ export default function CodeEditorView({
               <FileCode size={20} color="var(--accent-cyan)" /> Code Snippet Input
             </h2>
             <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-              Paste code below, load a preset sample, or clear to start fresh.
+              Paste code below, load a preset sample, or use ⚡ Auto-Fix Syntax to clean malformed quotes & colons.
             </p>
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+            {code && (
+              <button
+                className="glass-btn"
+                style={{ fontSize: '0.8rem', padding: '6px 12px', color: '#34d399', border: '1px solid rgba(52, 211, 153, 0.4)', display: 'flex', alignItems: 'center', gap: '6px' }}
+                onClick={handleAutoFixSyntax}
+                title="Automatically fix malformed quotes, brackets & colons"
+              >
+                <Zap size={14} color="#34d399" /> Auto-Fix Syntax Now
+              </button>
+            )}
+
             <button
               className="glass-btn"
               style={{ fontSize: '0.8rem', padding: '6px 12px', color: '#fca5a5', display: 'flex', alignItems: 'center', gap: '6px' }}
@@ -168,19 +186,27 @@ export default function CodeEditorView({
             gap: '12px'
           }}>
             {code && (
-              <button 
-                onClick={handleClearCode}
-                style={{ background: 'none', border: 'none', color: '#fca5a5', cursor: 'pointer', fontSize: '0.75rem' }}
-              >
-                Clear
-              </button>
+              <>
+                <button 
+                  onClick={handleAutoFixSyntax}
+                  style={{ background: 'none', border: 'none', color: '#34d399', cursor: 'pointer', fontSize: '0.75rem', fontWeight: '600' }}
+                >
+                  ⚡ Auto-Fix Syntax
+                </button>
+                <button 
+                  onClick={handleClearCode}
+                  style={{ background: 'none', border: 'none', color: '#fca5a5', cursor: 'pointer', fontSize: '0.75rem' }}
+                >
+                  Clear
+                </button>
+              </>
             )}
             <span>{code ? code.split('\n').length : 0} lines | {code.length} chars</span>
           </div>
         </div>
 
         {/* Submit Action Button */}
-        <div style={{ display: 'flex', justifyContent: 'flex-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
           <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '6px' }}>
             <Cpu size={16} color="var(--accent-cyan)" />
             <span>Static Analysis + Gemini LLM Hybrid Pipeline</span>
@@ -190,10 +216,10 @@ export default function CodeEditorView({
             {code && (
               <button
                 className="glass-btn"
-                style={{ padding: '12px 20px', fontSize: '0.9rem', color: '#fca5a5' }}
-                onClick={handleClearCode}
+                style={{ padding: '12px 20px', fontSize: '0.9rem', color: '#34d399', border: '1px solid rgba(52, 211, 153, 0.4)' }}
+                onClick={handleAutoFixSyntax}
               >
-                <Trash2 size={16} /> Clear Code
+                <Zap size={16} color="#34d399" /> Auto-Fix Syntax Now
               </button>
             )}
 
