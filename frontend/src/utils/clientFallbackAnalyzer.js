@@ -11,6 +11,36 @@ export function runClientSideReview(code, language = "python", snippetTitle = "U
   lines.forEach((line, idx) => {
     const lineNum = idx + 1;
 
+    // Prime number missing boundary check
+    if (/def\s+is_prime|function\s+isPrime/i.test(line)) {
+      if (!code.includes("n <= 1") && !code.includes("n < 2") && !code.includes("n <= 0") && !code.includes("n < 1")) {
+        findings.push({
+          line: lineNum,
+          severity: "HIGH",
+          category: "LOGIC_BUG",
+          title: "Missing Boundary Check for Numbers <= 1",
+          description: "Function `is_prime` lacks boundary checks for inputs <= 1. Numbers 1, 0, and negative integers will incorrectly return True.",
+          recommendation: "Add `if n <= 1: return False` at the top of the function.",
+          merged_source: "static",
+          senior_comment: "Bug: 1, 0, and negative numbers are not prime! Add an initial boundary check `if n <= 1: return False`."
+        });
+      }
+    }
+
+    // Range off-by-one for sqrt prime check
+    if (line.includes("range(2, int(n ** 0.5))") || line.includes("range(2, int(math.sqrt(n)))")) {
+      findings.push({
+        line: lineNum,
+        severity: "HIGH",
+        category: "LOGIC_BUG",
+        title: "Off-by-One Range Boundary in Square Root Loop",
+        description: "Loop `range(2, int(n ** 0.5))` excludes the square root itself, causing perfect squares like 4, 9, 25, 49 to be incorrectly identified as prime.",
+        recommendation: "Use `range(2, int(n ** 0.5) + 1)` to include the square root value.",
+        merged_source: "static",
+        senior_comment: "Off-by-one bug! Range in Python excludes the upper bound, so `range(2, 3)` only checks 2 and skips 3."
+      });
+    }
+
     // Secret Detection
     if (/AWS_SECRET_KEY|AKIA[0-9A-Z]{16}|SECRET_KEY|PRIVATE_KEY/i.test(line) && line.includes("=")) {
       findings.push({
@@ -98,7 +128,7 @@ export function runClientSideReview(code, language = "python", snippetTitle = "U
     }
   });
 
-  // Calculate counts and health score (Deduct only for CRITICAL, HIGH, MEDIUM errors)
+  // Calculate counts and health score (Deduct for CRITICAL, HIGH, MEDIUM errors)
   const counts = { critical: 0, high: 0, medium: 0, low: 0, info: 0, static: findings.length, ai: 0, hybrid: 0 };
   let totalDeduction = 0;
 
@@ -127,7 +157,7 @@ export function runClientSideReview(code, language = "python", snippetTitle = "U
     all_findings: findings,
     counts: counts,
     refactored_code: code,
-    refactor_explanation: "Code passed validation with clean score.",
+    refactor_explanation: "Code review executed.",
     persona_used: `${persona} (Browser Engine)`,
     github_markdown_comment: `## 🛡️ BugShield AI Review Summary\n\n- **Health Score**: ${healthScore}/100\n- **Issues Found**: ${findings.length}\n- **Rating**: ${overallRating}`
   };

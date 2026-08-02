@@ -117,6 +117,22 @@ class StaticCodeAnalyzer:
                     "rule_id": "PY-SQLI-001"
                 })
 
+            # Prime boundary check missing
+            if re.search(r'def\s+is_prime', line):
+                if not re.search(r'n\s*<=\s*1|n\s*<\s*2|n\s*<=\s*0|n\s*<\s*1', code):
+                    findings.append({
+                        "id": f"STAT-PY-PRIME-{idx}",
+                        "line": idx,
+                        "title": "Missing Boundary Check for Numbers <= 1 in is_prime",
+                        "severity": "HIGH",
+                        "category": "Correctness",
+                        "source": "Static Analyzer",
+                        "description": "Function `is_prime` lacks boundary checks for inputs <= 1. Numbers 1, 0, and negative integers will incorrectly return True.",
+                        "suggestion": "Add boundary check `if n <= 1: return False` at the start of `is_prime`.",
+                        "rule_id": "PY-ALG-001"
+                    })
+
+
         # Python AST Parsing
         try:
             tree = ast.parse(code)
