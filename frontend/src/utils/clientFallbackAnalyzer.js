@@ -4,6 +4,8 @@
  * when backend API server is unreachable.
  */
 
+import { repairCodeSyntax } from './universalSyntaxRepair';
+
 export function runClientSideReview(code, language = "python", snippetTitle = "Untitled Snippet", persona = "Senior SDE") {
   const lines = code.split("\n");
   const findings = [];
@@ -30,7 +32,7 @@ export function runClientSideReview(code, language = "python", snippetTitle = "U
     }
 
     // 0. Python Syntax Error Check (unterminated strings, extra quotes, bad parentheses)
-    if (/logger\.(info|debug|warning|error)\s*\(\s*\(?\s*["'].*["']{2,}|\bprint\s*\(\s*\(?\s*["'].*["']{2,}/.test(cleanLine) || /""[a-zA-Z0-9_\s!\?.,-]+\)/.test(cleanLine)) {
+    if (/logger\.(info|debug|warning|error)\s*\(\s*\(?\s*["'].*["']{2,}|\bprint\s*\(\s*\(?\s*["'].*["']{2,}/.test(cleanLine) || /""[a-zA-Z0-9_\s!\?.,-]+\)/.test(cleanLine) || /""/.test(cleanLine)) {
       findings.push({
         line: lineNum,
         severity: "CRITICAL",
@@ -199,8 +201,8 @@ export function runClientSideReview(code, language = "python", snippetTitle = "U
   else if (healthScore < 75) overallRating = "NEEDS_WORK";
   else if (healthScore < 90) overallRating = "GOOD";
 
-  // Generate automated refactored code fixes
-  const refactoredCode = generateRefactoredCode(code, language);
+  // Generate automated refactored code fixes via universalSyntaxRepair
+  const refactoredCode = repairCodeSyntax(code, language);
 
   return {
     snippet_title: snippetTitle,
@@ -212,71 +214,8 @@ export function runClientSideReview(code, language = "python", snippetTitle = "U
     all_findings: findings,
     counts: counts,
     refactored_code: refactoredCode,
-    refactor_explanation: "Automated refactoring applied: fixed syntax errors, outdented premature loop returns, parameterized SQL queries, and injected safety guards.",
+    refactor_explanation: "Automated refactoring applied: repaired malformed quotes, balanced parentheses, added missing colons, fixed loop returns, and injected safety guards.",
     persona_used: `${persona} (Browser Engine)`,
     github_markdown_comment: `## 🛡️ BugShield AI Review Summary\n\n- **Health Score**: ${healthScore}/100\n- **Issues Found**: ${findings.length}\n- **Rating**: ${overallRating}`
   };
-}
-
-export function generateRefactoredCode(code, language) {
-  let lines = code.split("\n");
-
-  // 1. Fix line-by-line syntax & pattern bugs
-  lines = lines.map(line => {
-    let l = line;
-
-    // Fix malformed quotes or extra parens in logger.info(...) or print(...)
-    if (/logger\.(info|debug|warning|error)|print/i.test(l)) {
-      l = l.replace(/(logger\.(?:info|debug|warning|error)|print)\s*\(\s*\(?\s*["']*(.*?)["']*\s*\)?\s*\)/i, (match, fn, text) => {
-        const cleanText = text.replace(/["']/g, ''); // strip malformed quote marks
-        const indentPos = line.search(/\S/);
-        const indentStr = " ".repeat(Math.max(0, indentPos >= 0 ? indentPos : 0));
-        return `${indentStr}${fn}("${cleanText}")`;
-      });
-    }
-
-    // Fix range(2, int(n ** 0.5)) missing + 1
-    if (/range\s*\(\s*2\s*,\s*int\s*\([^)]*(\*\*|sqrt)[^)]*\)\s*\)/i.test(l) && !l.includes("+")) {
-      l = l.replace(/(\*\*|sqrt)\s*0?\.5\s*\)/, "$1 0.5) + 1");
-    }
-
-    return l;
-  });
-
-  // 2. Fix is_prime missing boundary check
-  let codeStr = lines.join("\n");
-  if (/def\s+is_prime/i.test(codeStr) && !/if\s+.*(n|num|number)\s*(<=?|<)\s*[012]/.test(codeStr)) {
-    const updatedLines = [];
-    lines.forEach(l => {
-      updatedLines.push(l);
-      if (/def\s+is_prime/i.test(l)) {
-        const indentPos = l.search(/\S/);
-        const indentStr = " ".repeat(Math.max(0, indentPos >= 0 ? indentPos : 0));
-        updatedLines.push(`${indentStr}    if n <= 1:`);
-        updatedLines.push(`${indentStr}        return False`);
-      }
-    });
-    lines = updatedLines;
-  }
-
-  // 3. Fix return True inside for loop (early return bug)
-  let inFor = false;
-  let forIndent = 0;
-  lines = lines.map(l => {
-    const indent = l.search(/\S/);
-    if (/^\s*(for|while)\b/.test(l)) {
-      inFor = true;
-      forIndent = indent;
-    } else if (inFor && indent <= forIndent && l.trim() !== '') {
-      inFor = false;
-    }
-
-    if (inFor && indent > forIndent && (l.trim() === "return True" || l.trim() === "return true")) {
-      const indentStr = " ".repeat(Math.max(0, forIndent));
-      return `${indentStr}return True`;
-    }
-    return l;
-  });
-
-  return lines.join("\n");
 }
