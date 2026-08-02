@@ -15,9 +15,9 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('editor'); // 'editor' | 'results' | 'github' | 'history' | 'interview'
   
   // Editor state
-  const [code, setCode] = useState(SAMPLE_SNIPPETS[0].code);
-  const [language, setLanguage] = useState(SAMPLE_SNIPPETS[0].language);
-  const [title, setTitle] = useState(SAMPLE_SNIPPETS[0].name);
+  const [code, setCode] = useState('');
+  const [language, setLanguage] = useState('python');
+  const [title, setTitle] = useState('Untitled Snippet');
   const [persona, setPersona] = useState('Senior SDE');
   
   // App state

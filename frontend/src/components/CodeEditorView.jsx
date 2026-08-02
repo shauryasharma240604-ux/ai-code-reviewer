@@ -1,5 +1,5 @@
 import React from 'react';
-import { Play, Sparkles, FileCode, Cpu, UserCheck } from 'lucide-react';
+import { Play, Sparkles, FileCode, Cpu, Trash2, RotateCcw } from 'lucide-react';
 import { SAMPLE_SNIPPETS } from '../utils/sampleCode';
 
 export default function CodeEditorView({
@@ -20,10 +20,15 @@ export default function CodeEditorView({
     setTitle(snippet.name);
   };
 
+  const handleClearCode = () => {
+    setCode('');
+    setTitle('Untitled Snippet');
+  };
+
   return (
     <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '0 24px' }}>
       
-      {/* Top Banner / Presets */}
+      {/* Top Banner / Presets & Clear Button */}
       <div className="glass-panel" style={{ padding: '20px', marginBottom: '20px' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px' }}>
           <div>
@@ -31,12 +36,21 @@ export default function CodeEditorView({
               <FileCode size={20} color="var(--accent-cyan)" /> Code Snippet Input
             </h2>
             <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-              Paste code below or load a preset sample with real-world vulnerabilities.
+              Paste code below, load a preset sample, or clear to start fresh.
             </p>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Sample Presets:</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+            <button
+              className="glass-btn"
+              style={{ fontSize: '0.8rem', padding: '6px 12px', color: '#fca5a5', display: 'flex', alignItems: 'center', gap: '6px' }}
+              onClick={handleClearCode}
+              title="Clear editor text"
+            >
+              <Trash2 size={14} /> Clear Code Section
+            </button>
+
+            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginLeft: '6px' }}>Sample Presets:</span>
             {SAMPLE_SNIPPETS.map(snippet => (
               <button
                 key={snippet.id}
@@ -148,43 +162,66 @@ export default function CodeEditorView({
             right: '16px', 
             fontSize: '0.75rem', 
             color: 'var(--text-muted)',
-            fontFamily: 'var(--font-mono)'
+            fontFamily: 'var(--font-mono)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px'
           }}>
-            {code.split('\n').length} lines | {code.length} chars
+            {code && (
+              <button 
+                onClick={handleClearCode}
+                style={{ background: 'none', border: 'none', color: '#fca5a5', cursor: 'pointer', fontSize: '0.75rem' }}
+              >
+                Clear
+              </button>
+            )}
+            <span>{code ? code.split('\n').length : 0} lines | {code.length} chars</span>
           </div>
         </div>
 
         {/* Submit Action Button */}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '16px' }}>
+        <div style={{ display: 'flex', justifyContent: 'flex-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
           <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '6px' }}>
             <Cpu size={16} color="var(--accent-cyan)" />
             <span>Static Analysis + Gemini LLM Hybrid Pipeline</span>
           </div>
 
-          <button
-            className="glass-btn glass-btn-primary"
-            style={{ padding: '12px 28px', fontSize: '1rem' }}
-            onClick={onRunReview}
-            disabled={loading}
-          >
-            {loading ? (
-              <>
-                <div style={{ 
-                  width: '18px', 
-                  height: '18px', 
-                  border: '2px solid white', 
-                  borderTopColor: 'transparent', 
-                  borderRadius: '50%', 
-                  animation: 'spin 0.8s linear infinite' 
-                }} />
-                Running Hybrid Pipeline...
-              </>
-            ) : (
-              <>
-                <Play size={18} /> Run Code Review
-              </>
+          <div style={{ display: 'flex', gap: '12px' }}>
+            {code && (
+              <button
+                className="glass-btn"
+                style={{ padding: '12px 20px', fontSize: '0.9rem', color: '#fca5a5' }}
+                onClick={handleClearCode}
+              >
+                <Trash2 size={16} /> Clear Code
+              </button>
             )}
-          </button>
+
+            <button
+              className="glass-btn glass-btn-primary"
+              style={{ padding: '12px 28px', fontSize: '1rem' }}
+              onClick={onRunReview}
+              disabled={loading || !code.trim()}
+            >
+              {loading ? (
+                <>
+                  <div style={{ 
+                    width: '18px', 
+                    height: '18px', 
+                    border: '2px solid white', 
+                    borderTopColor: 'transparent', 
+                    borderRadius: '50%', 
+                    animation: 'spin 0.8s linear infinite' 
+                  }} />
+                  Running Hybrid Pipeline...
+                </>
+              ) : (
+                <>
+                  <Play size={18} /> Run Code Review
+                </>
+              )}
+            </button>
+          </div>
         </div>
 
       </div>
