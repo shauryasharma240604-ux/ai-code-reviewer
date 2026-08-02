@@ -139,7 +139,7 @@ Static analysis findings context: {static_summary}
 Respond ONLY with valid JSON in this exact structure:
 {{
   "summary": "Summary string",
-  "overall_rating": "NEEDS_WORK",
+  "overall_rating": "EXCELLENT",
   "findings": [
     {{
       "id": "AI-1",
@@ -245,20 +245,6 @@ Respond ONLY with valid JSON in this exact structure:
                         "senior_comment": "Injecting unsanitized raw HTML is dangerous! Ensure input is passed through DOMPurify."
                     })
 
-        # Add generic senior engineer review finding if findings are sparse
-        if len(findings) == 0:
-            findings.append({
-                "id": "AI-FALLBACK-GEN-1",
-                "line": 1,
-                "title": "Concurrency & Error Resilience Consideration",
-                "severity": "MEDIUM",
-                "category": "Edge Case",
-                "source": "AI Senior Reviewer (Fallback Engine)",
-                "description": "Consider how this function behaves when input parameters are `None`/`null`, empty collections, or under high concurrent request volume.",
-                "suggestion": "Add defensive precondition checks at function entry points.",
-                "senior_comment": "Great initial structure! Make sure we test boundary conditions (e.g. zero-length payloads and null values) in our unit test suite."
-            })
-
         # Generate intelligent clean refactored code output
         refactored_lines = []
         for line in lines:
@@ -287,9 +273,12 @@ Respond ONLY with valid JSON in this exact structure:
         elif not self.api_key:
             summary_note += " (No Gemini API key supplied in settings; running offline senior SDE review)."
 
+        has_serious_issues = any(f.get("severity") in ["CRITICAL", "HIGH"] for f in (static_findings + findings))
+        overall_rating = "CRITICAL_REVISION" if any(f.get("severity") == "CRITICAL" for f in (static_findings + findings)) else ("NEEDS_WORK" if has_serious_issues else "EXCELLENT")
+
         return {
             "summary": f"{summary_note} Code logic analyzed for edge-cases, error handling, security, and refactoring potential.",
-            "overall_rating": "NEEDS_WORK" if (static_findings or len(findings) > 1) else "GOOD",
+            "overall_rating": overall_rating,
             "findings": findings,
             "refactored_code": refactored_code,
             "refactor_explanation": "Applied defensive error handling, replaced debug print/var statements, and injected logger bindings."

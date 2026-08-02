@@ -44,7 +44,7 @@ class ReviewPipeline:
         counts, health_score = self._calculate_health_metrics(merged_findings)
 
         overall_rating = ai_result.get("overall_rating")
-        if not overall_rating:
+        if not overall_rating or health_score >= 90:
             if health_score >= 90:
                 overall_rating = "EXCELLENT"
             elif health_score >= 75:
@@ -116,12 +116,13 @@ class ReviewPipeline:
             "hybrid": 0
         }
 
+        # Deduct score ONLY for actual errors (CRITICAL, HIGH, MEDIUM). LOW/INFO notes do NOT lower score.
         score_deductions = {
             "CRITICAL": 25,
             "HIGH": 15,
             "MEDIUM": 8,
-            "LOW": 3,
-            "INFO": 1
+            "LOW": 0,
+            "INFO": 0
         }
 
         total_deduction = 0
@@ -150,7 +151,7 @@ class ReviewPipeline:
                 counts["static"] += 1
                 counts["ai"] += 1
 
-            total_deduction += score_deductions.get(sev, 1)
+            total_deduction += score_deductions.get(sev, 0)
 
         health_score = max(0, 100 - total_deduction)
         return counts, health_score

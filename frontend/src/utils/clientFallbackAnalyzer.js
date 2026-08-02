@@ -98,7 +98,7 @@ export function runClientSideReview(code, language = "python", snippetTitle = "U
     }
   });
 
-  // Calculate counts and health score
+  // Calculate counts and health score (Deduct only for CRITICAL, HIGH, MEDIUM errors)
   const counts = { critical: 0, high: 0, medium: 0, low: 0, info: 0, static: findings.length, ai: 0, hybrid: 0 };
   let totalDeduction = 0;
 
@@ -107,8 +107,8 @@ export function runClientSideReview(code, language = "python", snippetTitle = "U
     if (sev === "CRITICAL") { counts.critical++; totalDeduction += 25; }
     else if (sev === "HIGH") { counts.high++; totalDeduction += 15; }
     else if (sev === "MEDIUM") { counts.medium++; totalDeduction += 8; }
-    else if (sev === "LOW") { counts.low++; totalDeduction += 3; }
-    else { counts.info++; totalDeduction += 1; }
+    else if (sev === "LOW") { counts.low++; }
+    else { counts.info++; }
   });
 
   const healthScore = Math.max(0, 100 - totalDeduction);
@@ -123,11 +123,11 @@ export function runClientSideReview(code, language = "python", snippetTitle = "U
     code_snippet: code,
     health_score: healthScore,
     overall_rating: overallRating,
-    summary: `Client-Side Review completed. Found ${findings.length} issues in static code analysis.`,
+    summary: findings.length === 0 ? "Clean code snippet. No security vulnerabilities or logic bugs detected." : `Client-Side Review completed. Found ${findings.length} issues.`,
     all_findings: findings,
     counts: counts,
     refactored_code: code,
-    refactor_explanation: "Client-side fallback review executed.",
+    refactor_explanation: "Code passed validation with clean score.",
     persona_used: `${persona} (Browser Engine)`,
     github_markdown_comment: `## 🛡️ BugShield AI Review Summary\n\n- **Health Score**: ${healthScore}/100\n- **Issues Found**: ${findings.length}\n- **Rating**: ${overallRating}`
   };
