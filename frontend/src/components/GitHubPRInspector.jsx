@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { GitPullRequest, Search, FileCode, Check, Copy, AlertCircle, ExternalLink, ShieldCheck } from 'lucide-react';
+import { fetchApi } from '../utils/api';
 
 export default function GitHubPRInspector({ apiKey, onSelectReport }) {
   const [prUrl, setPrUrl] = useState('');
@@ -17,21 +18,14 @@ export default function GitHubPRInspector({ apiKey, onSelectReport }) {
     setPrSummary(null);
 
     try {
-      const response = await fetch('/api/github/pr', {
+      const data = await fetchApi('/api/github/pr', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           url: prUrl,
           api_key: apiKey
         })
       });
 
-      if (!response.ok) {
-        const errData = await response.json();
-        throw new Error(errData.detail || 'Failed to fetch GitHub PR details.');
-      }
-
-      const data = await response.json();
       setPrSummary(data);
       setSelectedFileIdx(0);
     } catch (err) {

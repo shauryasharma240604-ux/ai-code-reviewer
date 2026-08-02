@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { History, Trash2, ExternalLink, Calendar, Code, Shield } from 'lucide-react';
+import { fetchApi } from '../utils/api';
 
 export default function HistoryView({ onSelectReport }) {
   const [history, setHistory] = useState([]);
@@ -8,13 +9,10 @@ export default function HistoryView({ onSelectReport }) {
   const fetchHistory = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/history');
-      if (res.ok) {
-        const data = await res.json();
-        setHistory(data);
-      }
+      const data = await fetchApi('/api/history');
+      setHistory(data || []);
     } catch (err) {
-      console.error("Failed to load review history", err);
+      console.warn("Failed to load review history:", err.message);
     } finally {
       setLoading(false);
     }
@@ -29,10 +27,8 @@ export default function HistoryView({ onSelectReport }) {
     if (!window.confirm("Are you sure you want to delete this review record?")) return;
 
     try {
-      const res = await fetch(`/api/history/${id}`, { method: 'DELETE' });
-      if (res.ok) {
-        setHistory(prev => prev.filter(item => item.id !== id));
-      }
+      await fetchApi(`/api/history/${id}`, { method: 'DELETE' });
+      setHistory(prev => prev.filter(item => item.id !== id));
     } catch (err) {
       console.error("Delete failed", err);
     }
