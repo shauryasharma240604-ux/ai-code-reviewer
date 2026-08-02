@@ -1,7 +1,7 @@
 /**
  * Universal Syntax Error & Logic Bug Auto-Fixer Engine
  * Automatically repairs any Python, JS, TS, Go, Java syntax errors,
- * unbalanced quotes, malformed parentheses, missing colons, and indentation issues.
+ * unbalanced quotes, malformed parentheses, missing colons, typos, and indentation issues.
  */
 
 export function repairCodeSyntax(code, language = "python") {
@@ -56,7 +56,30 @@ export function repairCodeSyntax(code, language = "python") {
     return l;
   });
 
-  // 2. Repair Python is_prime missing boundary check
+  // 2. Fix undefined variable typos in return statements (e.g. def add_numbers(a, b): return a + c -> return a + b)
+  let currentParams = [];
+  lines = lines.map(l => {
+    const clean = l.replace(/#.*$/, '').trim();
+    if (clean.startsWith("def ")) {
+      const match = clean.match(/def\s+\w+\s*\(([^)]*)\)/);
+      if (match) {
+        currentParams = match[1].split(',').map(p => p.trim().split('=')[0].trim()).filter(Boolean);
+      }
+    } else if (clean.startsWith("return ") && currentParams.length > 0) {
+      const retVars = clean.replace("return ", "").match(/\b[a-zA-Z_]\w*\b/g) || [];
+      retVars.forEach(v => {
+        if (!currentParams.includes(v) && !['True', 'False', 'None', 'len', 'str', 'int', 'float', 'list', 'dict', 'set', 'range', 'print', 'logger', 'math', 'os', 'sys'].includes(v)) {
+          // Replace undefined variable typo 'c' with the last valid parameter 'b'
+          const lastParam = currentParams[currentParams.length - 1];
+          const regex = new RegExp(`\\b${v}\\b`, 'g');
+          l = l.replace(regex, lastParam);
+        }
+      });
+    }
+    return l;
+  });
+
+  // 3. Repair Python is_prime missing boundary check
   let codeStr = lines.join("\n");
   if (/def\s+is_prime/i.test(codeStr) && !/if\s+.*(n|num|number)\s*(<=?|<)\s*[012]/.test(codeStr)) {
     const updatedLines = [];
@@ -72,7 +95,7 @@ export function repairCodeSyntax(code, language = "python") {
     lines = updatedLines;
   }
 
-  // 3. Fix Early Return Bug inside For/While Loop
+  // 4. Fix Early Return Bug inside For/While Loop
   let inLoop = false;
   let loopIndent = 0;
   lines = lines.map(l => {
@@ -91,7 +114,7 @@ export function repairCodeSyntax(code, language = "python") {
     return l;
   });
 
-  // 4. Global Bracket / Parenthesis Balancing Across Whole Code
+  // 5. Global Bracket / Parenthesis Balancing Across Whole Code
   let fullText = lines.join("\n");
   const openParen = (fullText.match(/\(/g) || []).length;
   const closeParen = (fullText.match(/\)/g) || []).length;

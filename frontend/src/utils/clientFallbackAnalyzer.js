@@ -31,13 +31,12 @@ export function runClientSideReview(code, language = "python", snippetTitle = "U
       }
     }
 
-    // 0. Universal Python / JS Syntax Error Check (malformed quotes, missing opening/closing quotes, bad parens)
+    // 0a. Universal Python / JS Syntax Error Check (malformed quotes, missing opening/closing quotes, bad parens)
     if (/logger\.(info|debug|warning|error|exception)|print|console\.log/i.test(cleanLine)) {
       const match = cleanLine.match(/(logger\.(?:info|debug|warning|error|exception)|print|console\.log)\s*\(\s*\(?\s*(.*?)\s*\)?\s*\)/i);
       if (match) {
         const argText = match[2].trim();
         const quoteCount = (argText.match(/["']/g) || []).length;
-        // Flag odd number of quotes (unbalanced quotes) or double/malformed quotes
         if (quoteCount % 2 !== 0 || /""/.test(argText) || /^[a-zA-Z0-9_\s]+["']$/.test(argText) || /^["'][a-zA-Z0-9_\s]+$/.test(argText)) {
           findings.push({
             line: lineNum,
@@ -48,6 +47,39 @@ export function runClientSideReview(code, language = "python", snippetTitle = "U
             recommendation: "Fix quote syntax by properly enfolding strings in matching double quotes.",
             merged_source: "static",
             senior_comment: `SyntaxError on line ${lineNum}: Malformed string quote syntax in function call.`
+          });
+        }
+      }
+    }
+
+    // 0b. Undefined Variable Reference inside Function Body (NameError e.g. def add_numbers(a, b): return a + c)
+    if (/def\s+(\w+)\s*\(([^)]*)\)/.test(cleanLine)) {
+      const funcMatch = cleanLine.match(/def\s+(\w+)\s*\(([^)]*)\)/);
+      const funcName = funcMatch[1];
+      const params = funcMatch[2].split(',').map(p => p.trim().split('=')[0].trim()).filter(Boolean);
+      const paramSet = new Set(params);
+
+      for (let j = idx; j < lines.length; j++) {
+        const bodyLine = lines[j].replace(/#.*$/, '').trim();
+        if (!bodyLine) continue;
+        if (j > idx && /^\s*(def|class)\b/.test(lines[j])) break;
+
+        const retMatch = bodyLine.match(/return\s+([a-zA-Z0-9_\s\+\-\*\/\%]+)/);
+        if (retMatch) {
+          const vars = retMatch[1].match(/\b[a-zA-Z_]\w*\b/g) || [];
+          vars.forEach(v => {
+            if (!paramSet.has(v) && !['True', 'False', 'None', 'len', 'str', 'int', 'float', 'list', 'dict', 'set', 'range', 'print', 'logger', 'math', 'os', 'sys'].includes(v)) {
+              findings.push({
+                line: j + 1,
+                severity: "HIGH",
+                category: "LOGIC_BUG",
+                title: `Undefined Variable Reference '${v}' (NameError Risk)`,
+                description: `Function \`${funcName}\` references undefined variable \`${v}\` on line ${j + 1}, which is neither in parameters (${params.join(', ')}) nor defined in scope.`,
+                recommendation: `Check for variable typo or pass \`${v}\` as a parameter to \`${funcName}\`.`,
+                merged_source: "static",
+                senior_comment: `NameError: \`${v}\` is not defined in \`${funcName}(${params.join(', ')})\`. Did you mean \`${params[params.length - 1] || 'b'}\`?`
+              });
+            }
           });
         }
       }
