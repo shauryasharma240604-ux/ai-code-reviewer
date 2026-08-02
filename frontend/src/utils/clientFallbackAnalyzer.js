@@ -8,17 +8,21 @@ export function runClientSideReview(code, language = "python", snippetTitle = "U
   const lines = code.split("\n");
   const findings = [];
 
+  // Strip single-line comments for reliable code logic inspection
+  const codeWithoutComments = lines.map(l => l.replace(/#.*$/, '').replace(/\/\/.*$/, '')).join('\n');
+
   lines.forEach((line, idx) => {
     const lineNum = idx + 1;
+    const cleanLine = line.replace(/#.*$/, '').replace(/\/\/.*$/, '');
 
-    // Prime number missing boundary check
+    // Prime number missing boundary check (ignoring comments)
     if (/def\s+is_prime|function\s+isPrime/i.test(line)) {
-      if (!code.includes("n <= 1") && !code.includes("n < 2") && !code.includes("n <= 0") && !code.includes("n < 1")) {
+      if (!/if\s+.*(n|num|number)\s*(<=?|<)\s*[012]/.test(codeWithoutComments)) {
         findings.push({
           line: lineNum,
           severity: "HIGH",
           category: "LOGIC_BUG",
-          title: "Missing Boundary Check for Numbers <= 1",
+          title: "Missing Boundary Check for Numbers <= 1 in is_prime",
           description: "Function `is_prime` lacks boundary checks for inputs <= 1. Numbers 1, 0, and negative integers will incorrectly return True.",
           recommendation: "Add `if n <= 1: return False` at the top of the function.",
           merged_source: "static",
@@ -28,7 +32,7 @@ export function runClientSideReview(code, language = "python", snippetTitle = "U
     }
 
     // Range off-by-one for sqrt prime check
-    if (line.includes("range(2, int(n ** 0.5))") || line.includes("range(2, int(math.sqrt(n)))")) {
+    if (cleanLine.includes("range(2, int(n ** 0.5))") || cleanLine.includes("range(2, int(math.sqrt(n)))")) {
       findings.push({
         line: lineNum,
         severity: "HIGH",
@@ -42,7 +46,7 @@ export function runClientSideReview(code, language = "python", snippetTitle = "U
     }
 
     // Secret Detection
-    if (/AWS_SECRET_KEY|AKIA[0-9A-Z]{16}|SECRET_KEY|PRIVATE_KEY/i.test(line) && line.includes("=")) {
+    if (/AWS_SECRET_KEY|AKIA[0-9A-Z]{16}|SECRET_KEY|PRIVATE_KEY/i.test(cleanLine) && cleanLine.includes("=")) {
       findings.push({
         line: lineNum,
         severity: "CRITICAL",
@@ -56,7 +60,7 @@ export function runClientSideReview(code, language = "python", snippetTitle = "U
     }
 
     // Dangerous Eval / Exec
-    if (/\beval\(|\bexec\(|dangerouslySetInnerHTML/i.test(line)) {
+    if (/\beval\(|\bexec\(|dangerouslySetInnerHTML/i.test(cleanLine)) {
       findings.push({
         line: lineNum,
         severity: "CRITICAL",
@@ -70,7 +74,7 @@ export function runClientSideReview(code, language = "python", snippetTitle = "U
     }
 
     // SQL Injection Risk
-    if (/SELECT|INSERT|UPDATE|DELETE/i.test(line) && (line.includes("f\"") || line.includes("f'") || line.includes("+"))) {
+    if (/SELECT|INSERT|UPDATE|DELETE/i.test(cleanLine) && (cleanLine.includes("f\"") || cleanLine.includes("f'") || cleanLine.includes("+"))) {
       findings.push({
         line: lineNum,
         severity: "HIGH",
@@ -84,7 +88,7 @@ export function runClientSideReview(code, language = "python", snippetTitle = "U
     }
 
     // Python Mutable Default Argument
-    if (language === 'python' && /def\s+\w+\s*\(.*=\s*(\[\]|\{\})/i.test(line)) {
+    if (language === 'python' && /def\s+\w+\s*\(.*=\s*(\[\]|\{\})/i.test(cleanLine)) {
       findings.push({
         line: lineNum,
         severity: "HIGH",
@@ -98,7 +102,7 @@ export function runClientSideReview(code, language = "python", snippetTitle = "U
     }
 
     // Missing Request Timeout
-    if (/requests\.(get|post|put|delete)/i.test(line) && !line.includes("timeout")) {
+    if (/requests\.(get|post|put|delete)/i.test(cleanLine) && !cleanLine.includes("timeout")) {
       findings.push({
         line: lineNum,
         severity: "MEDIUM",
@@ -113,7 +117,7 @@ export function runClientSideReview(code, language = "python", snippetTitle = "U
 
     // React Direct State Mutation
     if (language === 'javascript' || language === 'typescript') {
-      if (/userData\.\w+\s*=|data\.\w+\s*=/i.test(line) && !line.includes("setUserData")) {
+      if (/userData\.\w+\s*=|data\.\w+\s*=/i.test(cleanLine) && !cleanLine.includes("setUserData")) {
         findings.push({
           line: lineNum,
           severity: "HIGH",

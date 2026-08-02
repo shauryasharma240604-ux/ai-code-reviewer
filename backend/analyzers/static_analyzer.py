@@ -119,7 +119,8 @@ class StaticCodeAnalyzer:
 
             # Prime boundary check missing
             if re.search(r'def\s+is_prime', line):
-                if not re.search(r'n\s*<=\s*1|n\s*<\s*2|n\s*<=\s*0|n\s*<\s*1', code):
+                code_no_comments = "\n".join(l.split('#')[0] for l in lines)
+                if not re.search(r'if\s+.*(n|num|number)\s*(<=?|<)\s*[012]', code_no_comments):
                     findings.append({
                         "id": f"STAT-PY-PRIME-{idx}",
                         "line": idx,
