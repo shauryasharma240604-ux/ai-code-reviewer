@@ -29,17 +29,17 @@ export function runClientSideReview(code, language = "python", snippetTitle = "U
       }
     }
 
-    // 0. Python Syntax Error Check (unterminated strings, extra quotes, missing colons)
-    if (/logger\.info\(""|print\(""|""[a-zA-Z0-9_\s!\?.,-]+\)/.test(cleanLine)) {
+    // 0. Python Syntax Error Check (unterminated strings, extra quotes, bad parentheses)
+    if (/logger\.(info|debug|warning|error)\s*\(\s*\(?\s*["'].*["']{2,}|\bprint\s*\(\s*\(?\s*["'].*["']{2,}/.test(cleanLine) || /""[a-zA-Z0-9_\s!\?.,-]+\)/.test(cleanLine)) {
       findings.push({
         line: lineNum,
         severity: "CRITICAL",
         category: "SYNTAX_ERROR",
-        title: "Python Syntax Error: Malformed String Literal",
+        title: "Python Syntax Error: Malformed String Literal or Parentheses",
         description: `SyntaxError: unterminated or malformed string literal detected on line ${lineNum}: \`${trimmed}\`.`,
-        recommendation: "Fix quote syntax by removing duplicate or extra string quotes.",
+        recommendation: "Fix quote syntax by using single set of matching double quotes.",
         merged_source: "static",
-        senior_comment: `SyntaxError on line ${lineNum}: Remove duplicate quotes like ""hello" -> "hello".`
+        senior_comment: `SyntaxError on line ${lineNum}: Clean up malformed string quotes and extra parentheses.`
       });
     }
 
@@ -224,10 +224,16 @@ export function generateRefactoredCode(code, language) {
   // 1. Fix line-by-line syntax & pattern bugs
   lines = lines.map(line => {
     let l = line;
-    // Fix malformed double quotes: logger.info(""hello") -> logger.info("hello")
-    l = l.replace(/logger\.info\(""([a-zA-Z0-9_\s!\?.,-]+)"\)/g, 'logger.info("$1")');
-    l = l.replace(/print\(""([a-zA-Z0-9_\s!\?.,-]+)"\)/g, 'print("$1")');
-    l = l.replace(/""([a-zA-Z0-9_\s!\?.,-]+)"/g, '"$1"');
+
+    // Fix malformed quotes or extra parens in logger.info(...) or print(...)
+    if (/logger\.(info|debug|warning|error)|print/i.test(l)) {
+      l = l.replace(/(logger\.(?:info|debug|warning|error)|print)\s*\(\s*\(?\s*["']*(.*?)["']*\s*\)?\s*\)/i, (match, fn, text) => {
+        const cleanText = text.replace(/["']/g, ''); // strip malformed quote marks
+        const indentPos = line.search(/\S/);
+        const indentStr = " ".repeat(Math.max(0, indentPos >= 0 ? indentPos : 0));
+        return `${indentStr}${fn}("${cleanText}")`;
+      });
+    }
 
     // Fix range(2, int(n ** 0.5)) missing + 1
     if (/range\s*\(\s*2\s*,\s*int\s*\([^)]*(\*\*|sqrt)[^)]*\)\s*\)/i.test(l) && !l.includes("+")) {
