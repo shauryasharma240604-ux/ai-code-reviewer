@@ -12,79 +12,43 @@ export function runClientSideReview(code, language = "python", snippetTitle = "U
   const codeWithoutComments = lines.map(l => l.replace(/#.*$/, '').replace(/\/\/.*$/, '')).join('\n');
 
   // Track loop indent levels to catch Early Return bugs
-  let insideLoopIndent = -1;
+  let currentLoopIndent = -1;
 
   lines.forEach((line, idx) => {
     const lineNum = idx + 1;
     const cleanLine = line.replace(/#.*$/, '').replace(/\/\/.*$/, '');
     const trimmed = cleanLine.trim();
-
-    // Calculate leading spaces
     const indent = line.search(/\S/);
 
-    if (/\b(for|while)\b/.test(trimmed)) {
-      insideLoopIndent = indent;
-    } else if (insideLoopIndent !== -1 && indent <= insideLoopIndent && trimmed !== '') {
-      insideLoopIndent = -1;
+    // Track loop state
+    if (/^\s*(for|while)\b/.test(cleanLine)) {
+      currentLoopIndent = indent;
+    } else if (currentLoopIndent !== -1 && indent !== -1) {
+      if (indent <= currentLoopIndent && trimmed !== '') {
+        currentLoopIndent = -1; // Exited loop block
+      }
     }
 
-    // 1. Secret Detection (AKIA keys, AWS_SECRET_KEY, API_KEY, etc.)
-    if (/(AKIA[0-9A-Z]{16,}|AWS_SECRET_KEY|SECRET_KEY|PRIVATE_KEY|API_KEY|PASSWORD)\s*=\s*["'][^"']{8,}["']/i.test(cleanLine)) {
-      findings.push({
-        line: lineNum,
-        severity: "CRITICAL",
-        category: "SECURITY",
-        title: "Hardcoded API Credential / Secret Leak",
-        description: "Hardcoded secret key or access token detected in source code. Credentials exposed in code repositories pose severe security compromise risks.",
-        recommendation: "Store secrets in environment variables (e.g. os.environ.get(...)) or a secure secrets vault.",
-        merged_source: "static",
-        senior_comment: "CRITICAL: Hardcoded secret key detected! Never commit API keys or secret strings into source control."
-      });
+    // 1. Early Return Bug inside Loop (e.g. return True inside for loop body)
+    if (currentLoopIndent !== -1 && indent > currentLoopIndent) {
+      if (/^return\s+(True|False|true|false)\b/.test(trimmed)) {
+        // If return statement is at the same indent as loop-level if blocks
+        if (cleanLine.includes("return True") || cleanLine.includes("return true")) {
+          findings.push({
+            line: lineNum,
+            severity: "HIGH",
+            category: "LOGIC_BUG",
+            title: "Early Return Bug Inside Loop Execution",
+            description: "`return True` is indented inside the loop body, causing the loop to exit prematurely on the very first iteration.",
+            recommendation: "Move `return True` outside the loop body so all candidate iterations are checked.",
+            merged_source: "static",
+            senior_comment: "Indentation bug! Returning True inside the loop body stops checking after the first iteration."
+          });
+        }
+      }
     }
 
-    // 2. SQL Injection Risk
-    if (/execute\s*\(\s*f["']|SELECT.*FROM.*WHERE|INSERT INTO|UPDATE.*SET/i.test(cleanLine) && (cleanLine.includes("f\"") || cleanLine.includes("f'") || cleanLine.includes("%") || cleanLine.includes("+"))) {
-      findings.push({
-        line: lineNum,
-        severity: "CRITICAL",
-        category: "SECURITY",
-        title: "Potential SQL Injection via String Formatting",
-        description: "Building database queries via string formatting or f-strings allows malicious users to inject unescaped SQL commands.",
-        recommendation: "Use parameterized queries with placeholder bindings (e.g., cursor.execute('SELECT * FROM users WHERE id = ?', (user_id,)))",
-        merged_source: "static",
-        senior_comment: "CRITICAL: SQL Injection vulnerability! Parameterize all database queries."
-      });
-    }
-
-    // 3. Dangerous Eval / Exec
-    if (/\beval\s*\(|\bexec\s*\(|dangerouslySetInnerHTML/i.test(cleanLine)) {
-      findings.push({
-        line: lineNum,
-        severity: "CRITICAL",
-        category: "SECURITY",
-        title: "Arbitrary Code Execution via eval()/exec()",
-        description: "Dynamic evaluation functions (eval/exec) or unescaped HTML injection open pathways for Remote Code Execution or Cross-Site Scripting (XSS).",
-        recommendation: "Use structured parsers (e.g., JSON.parse, ast.literal_eval) or safe React JSX rendering.",
-        merged_source: "static",
-        senior_comment: "CRITICAL: Dynamic code execution! Replace eval() with ast.literal_eval() or JSON parsers."
-      });
-    }
-
-    // 4. Python Mutable Default Argument
-    if (language === 'python' && /def\s+\w+\s*\(.*=\s*(\[\]|\{\})/i.test(cleanLine)) {
-      findings.push({
-        line: lineNum,
-        severity: "HIGH",
-        category: "CORRECTNESS",
-        title: "Mutable Default Argument Bug",
-        description: "Default argument values in Python are evaluated once at function definition time, sharing state across all function calls.",
-        recommendation: "Use None as default parameter value and initialize inside function body: log_list = log_list if log_list is not None else []",
-        merged_source: "static",
-        senior_comment: "HIGH: Mutable default argument bug! Use None as default value."
-      });
-    }
-
-    // 5. Prime number missing boundary check (ignoring comments)
+    // 2. Prime number missing boundary check (ignoring comments)
     if (/def\s+is_prime|function\s+isPrime/i.test(line)) {
       if (!/if\s+.*(n|num|number)\s*(<=?|<)\s*[012]/.test(codeWithoutComments)) {
         findings.push({
@@ -100,7 +64,7 @@ export function runClientSideReview(code, language = "python", snippetTitle = "U
       }
     }
 
-    // 6. Off-by-one Square Root Range Bug (flexible whitespace regex)
+    // 3. Off-by-one Square Root Range Bug (flexible whitespace regex)
     if (/range\s*\(\s*2\s*,\s*int\s*\([^)]*(\*\*|sqrt)[^)]*\)\s*\)/i.test(cleanLine)) {
       if (!cleanLine.includes("+")) {
         findings.push({
@@ -116,17 +80,59 @@ export function runClientSideReview(code, language = "python", snippetTitle = "U
       }
     }
 
-    // 7. Early Return Bug inside Loop (e.g. return True inside for loop)
-    if (insideLoopIndent !== -1 && (trimmed === "return True" || trimmed === "return true")) {
+    // 4. Secret Detection (AKIA keys, AWS_SECRET_KEY, API_KEY, etc.)
+    if (/(AKIA[0-9A-Z]{16,}|AWS_SECRET_KEY|SECRET_KEY|PRIVATE_KEY|API_KEY|PASSWORD)\s*=\s*["'][^"']{8,}["']/i.test(cleanLine)) {
+      findings.push({
+        line: lineNum,
+        severity: "CRITICAL",
+        category: "SECURITY",
+        title: "Hardcoded API Credential / Secret Leak",
+        description: "Hardcoded secret key or access token detected in source code. Credentials exposed in code repositories pose severe security compromise risks.",
+        recommendation: "Store secrets in environment variables (e.g. os.environ.get(...)) or a secure secrets vault.",
+        merged_source: "static",
+        senior_comment: "CRITICAL: Hardcoded secret key detected! Never commit API keys or secret strings into source control."
+      });
+    }
+
+    // 5. SQL Injection Risk
+    if (/execute\s*\(\s*f["']|SELECT.*FROM.*WHERE|INSERT INTO|UPDATE.*SET/i.test(cleanLine) && (cleanLine.includes("f\"") || cleanLine.includes("f'") || cleanLine.includes("%") || cleanLine.includes("+"))) {
+      findings.push({
+        line: lineNum,
+        severity: "CRITICAL",
+        category: "SECURITY",
+        title: "Potential SQL Injection via String Formatting",
+        description: "Building database queries via string formatting or f-strings allows malicious users to inject unescaped SQL commands.",
+        recommendation: "Use parameterized queries with placeholder bindings (e.g., cursor.execute('SELECT * FROM users WHERE id = ?', (user_id,)))",
+        merged_source: "static",
+        senior_comment: "CRITICAL: SQL Injection vulnerability! Parameterize all database queries."
+      });
+    }
+
+    // 6. Dangerous Eval / Exec
+    if (/\beval\s*\(|\bexec\s*\(|dangerouslySetInnerHTML/i.test(cleanLine)) {
+      findings.push({
+        line: lineNum,
+        severity: "CRITICAL",
+        category: "SECURITY",
+        title: "Arbitrary Code Execution via eval()/exec()",
+        description: "Dynamic evaluation functions (eval/exec) or unescaped HTML injection open pathways for Remote Code Execution or Cross-Site Scripting (XSS).",
+        recommendation: "Use structured parsers (e.g., JSON.parse, ast.literal_eval) or safe React JSX rendering.",
+        merged_source: "static",
+        senior_comment: "CRITICAL: Dynamic code execution! Replace eval() with ast.literal_eval() or JSON parsers."
+      });
+    }
+
+    // 7. Python Mutable Default Argument
+    if (language === 'python' && /def\s+\w+\s*\(.*=\s*(\[\]|\{\})/i.test(cleanLine)) {
       findings.push({
         line: lineNum,
         severity: "HIGH",
-        category: "LOGIC_BUG",
-        title: "Early Return Bug Inside Loop Execution",
-        description: "`return True` is indented inside the loop body, causing the loop to exit prematurely on the very first iteration.",
-        recommendation: "Move `return True` outside the loop body so all candidate divisors are checked.",
+        category: "CORRECTNESS",
+        title: "Mutable Default Argument Bug",
+        description: "Default argument values in Python are evaluated once at function definition time, sharing state across all function calls.",
+        recommendation: "Use None as default parameter value and initialize inside function body: log_list = log_list if log_list is not None else []",
         merged_source: "static",
-        senior_comment: "Indentation bug! Returning True inside the loop stops checking after the first iteration."
+        senior_comment: "HIGH: Mutable default argument bug! Use None as default value."
       });
     }
 
