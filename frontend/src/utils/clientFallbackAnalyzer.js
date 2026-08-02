@@ -28,7 +28,63 @@ export function runClientSideReview(code, language = "python", snippetTitle = "U
       insideLoopIndent = -1;
     }
 
-    // 1. Prime number missing boundary check (ignoring comments)
+    // 1. Secret Detection (AKIA keys, AWS_SECRET_KEY, API_KEY, etc.)
+    if (/(AKIA[0-9A-Z]{16,}|AWS_SECRET_KEY|SECRET_KEY|PRIVATE_KEY|API_KEY|PASSWORD)\s*=\s*["'][^"']{8,}["']/i.test(cleanLine)) {
+      findings.push({
+        line: lineNum,
+        severity: "CRITICAL",
+        category: "SECURITY",
+        title: "Hardcoded API Credential / Secret Leak",
+        description: "Hardcoded secret key or access token detected in source code. Credentials exposed in code repositories pose severe security compromise risks.",
+        recommendation: "Store secrets in environment variables (e.g. os.environ.get(...)) or a secure secrets vault.",
+        merged_source: "static",
+        senior_comment: "CRITICAL: Hardcoded secret key detected! Never commit API keys or secret strings into source control."
+      });
+    }
+
+    // 2. SQL Injection Risk
+    if (/execute\s*\(\s*f["']|SELECT.*FROM.*WHERE|INSERT INTO|UPDATE.*SET/i.test(cleanLine) && (cleanLine.includes("f\"") || cleanLine.includes("f'") || cleanLine.includes("%") || cleanLine.includes("+"))) {
+      findings.push({
+        line: lineNum,
+        severity: "CRITICAL",
+        category: "SECURITY",
+        title: "Potential SQL Injection via String Formatting",
+        description: "Building database queries via string formatting or f-strings allows malicious users to inject unescaped SQL commands.",
+        recommendation: "Use parameterized queries with placeholder bindings (e.g., cursor.execute('SELECT * FROM users WHERE id = ?', (user_id,)))",
+        merged_source: "static",
+        senior_comment: "CRITICAL: SQL Injection vulnerability! Parameterize all database queries."
+      });
+    }
+
+    // 3. Dangerous Eval / Exec
+    if (/\beval\s*\(|\bexec\s*\(|dangerouslySetInnerHTML/i.test(cleanLine)) {
+      findings.push({
+        line: lineNum,
+        severity: "CRITICAL",
+        category: "SECURITY",
+        title: "Arbitrary Code Execution via eval()/exec()",
+        description: "Dynamic evaluation functions (eval/exec) or unescaped HTML injection open pathways for Remote Code Execution or Cross-Site Scripting (XSS).",
+        recommendation: "Use structured parsers (e.g., JSON.parse, ast.literal_eval) or safe React JSX rendering.",
+        merged_source: "static",
+        senior_comment: "CRITICAL: Dynamic code execution! Replace eval() with ast.literal_eval() or JSON parsers."
+      });
+    }
+
+    // 4. Python Mutable Default Argument
+    if (language === 'python' && /def\s+\w+\s*\(.*=\s*(\[\]|\{\})/i.test(cleanLine)) {
+      findings.push({
+        line: lineNum,
+        severity: "HIGH",
+        category: "CORRECTNESS",
+        title: "Mutable Default Argument Bug",
+        description: "Default argument values in Python are evaluated once at function definition time, sharing state across all function calls.",
+        recommendation: "Use None as default parameter value and initialize inside function body: log_list = log_list if log_list is not None else []",
+        merged_source: "static",
+        senior_comment: "HIGH: Mutable default argument bug! Use None as default value."
+      });
+    }
+
+    // 5. Prime number missing boundary check (ignoring comments)
     if (/def\s+is_prime|function\s+isPrime/i.test(line)) {
       if (!/if\s+.*(n|num|number)\s*(<=?|<)\s*[012]/.test(codeWithoutComments)) {
         findings.push({
@@ -44,7 +100,7 @@ export function runClientSideReview(code, language = "python", snippetTitle = "U
       }
     }
 
-    // 2. Off-by-one Square Root Range Bug (flexible whitespace regex)
+    // 6. Off-by-one Square Root Range Bug (flexible whitespace regex)
     if (/range\s*\(\s*2\s*,\s*int\s*\([^)]*(\*\*|sqrt)[^)]*\)\s*\)/i.test(cleanLine)) {
       if (!cleanLine.includes("+")) {
         findings.push({
@@ -60,9 +116,8 @@ export function runClientSideReview(code, language = "python", snippetTitle = "U
       }
     }
 
-    // 3. Early Return Bug inside Loop (e.g. return True inside for loop)
+    // 7. Early Return Bug inside Loop (e.g. return True inside for loop)
     if (insideLoopIndent !== -1 && (trimmed === "return True" || trimmed === "return true")) {
-      // If return True is indented at same level as if statement inside loop
       findings.push({
         line: lineNum,
         severity: "HIGH",
@@ -75,63 +130,7 @@ export function runClientSideReview(code, language = "python", snippetTitle = "U
       });
     }
 
-    // Secret Detection
-    if (/AWS_SECRET_KEY|AKIA[0-9A-Z]{16}|SECRET_KEY|PRIVATE_KEY/i.test(cleanLine) && cleanLine.includes("=")) {
-      findings.push({
-        line: lineNum,
-        severity: "CRITICAL",
-        category: "SECURITY",
-        title: "Hardcoded API Credential Leak",
-        description: "Hardcoded secrets detected in source code. Access tokens or secret keys exposed in repository code pose severe security risks.",
-        recommendation: "Store secrets safely in environment variables or a secure key vault (e.g., AWS Secrets Manager).",
-        merged_source: "static",
-        senior_comment: "Hardcoded credentials in source code will trigger automated secret scanners and lead to security compromise."
-      });
-    }
-
-    // Dangerous Eval / Exec
-    if (/\beval\(|\bexec\(|dangerouslySetInnerHTML/i.test(cleanLine)) {
-      findings.push({
-        line: lineNum,
-        severity: "CRITICAL",
-        category: "SECURITY",
-        title: "Arbitrary Code Execution / XSS Vulnerability",
-        description: "Dynamic evaluation functions (eval/exec) or unescaped HTML injection open pathways for Remote Code Execution or Cross-Site Scripting (XSS).",
-        recommendation: "Use structured parsers (e.g., JSON.parse, ast.literal_eval) or safe React JSX rendering.",
-        merged_source: "static",
-        senior_comment: "Never evaluate raw user input directly. Replace with safe serialization standard libraries."
-      });
-    }
-
-    // SQL Injection Risk
-    if (/SELECT|INSERT|UPDATE|DELETE/i.test(cleanLine) && (cleanLine.includes("f\"") || cleanLine.includes("f'") || cleanLine.includes("+"))) {
-      findings.push({
-        line: lineNum,
-        severity: "HIGH",
-        category: "SECURITY",
-        title: "Potential SQL Injection via String Interpolation",
-        description: "Building database queries via string formatting or concatenation allows malicious users to inject unescaped SQL commands.",
-        recommendation: "Use parameterized queries with place-holders (e.g., cursor.execute('SELECT * FROM users WHERE id = ?', (user_id,)))",
-        merged_source: "static",
-        senior_comment: "Always parameterize database queries to prevent SQL injection."
-      });
-    }
-
-    // Python Mutable Default Argument
-    if (language === 'python' && /def\s+\w+\s*\(.*=\s*(\[\]|\{\})/i.test(cleanLine)) {
-      findings.push({
-        line: lineNum,
-        severity: "HIGH",
-        category: "CORRECTNESS",
-        title: "Mutable Default Argument Bug",
-        description: "Default argument values in Python are evaluated once at function definition time, sharing state across all function calls.",
-        recommendation: "Use None as the default argument value and initialize inside the function body: log_list = log_list if log_list is not none else []",
-        merged_source: "static",
-        senior_comment: "Mutable default arguments create unexpected side-effects across calls."
-      });
-    }
-
-    // Missing Request Timeout
+    // 8. Missing Request Timeout
     if (/requests\.(get|post|put|delete)/i.test(cleanLine) && !cleanLine.includes("timeout")) {
       findings.push({
         line: lineNum,
@@ -145,7 +144,7 @@ export function runClientSideReview(code, language = "python", snippetTitle = "U
       });
     }
 
-    // React Direct State Mutation
+    // 9. React Direct State Mutation
     if (language === 'javascript' || language === 'typescript') {
       if (/userData\.\w+\s*=|data\.\w+\s*=/i.test(cleanLine) && !cleanLine.includes("setUserData")) {
         findings.push({
@@ -187,7 +186,7 @@ export function runClientSideReview(code, language = "python", snippetTitle = "U
     code_snippet: code,
     health_score: healthScore,
     overall_rating: overallRating,
-    summary: findings.length === 0 ? "Clean code snippet. No security vulnerabilities or logic bugs detected." : `Client-Side Review completed. Found ${findings.length} issues.`,
+    summary: findings.length === 0 ? "Clean code snippet. No security vulnerabilities or logic bugs detected." : `Client-Side Review completed. Found ${findings.length} security & logic issues.`,
     all_findings: findings,
     counts: counts,
     refactored_code: code,
