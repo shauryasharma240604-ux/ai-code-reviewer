@@ -31,18 +31,26 @@ export function runClientSideReview(code, language = "python", snippetTitle = "U
       }
     }
 
-    // 0. Python Syntax Error Check (unterminated strings, extra quotes, bad parentheses)
-    if (/logger\.(info|debug|warning|error)\s*\(\s*\(?\s*["'].*["']{2,}|\bprint\s*\(\s*\(?\s*["'].*["']{2,}/.test(cleanLine) || /""[a-zA-Z0-9_\s!\?.,-]+\)/.test(cleanLine) || /""/.test(cleanLine)) {
-      findings.push({
-        line: lineNum,
-        severity: "CRITICAL",
-        category: "SYNTAX_ERROR",
-        title: "Python Syntax Error: Malformed String Literal or Parentheses",
-        description: `SyntaxError: unterminated or malformed string literal detected on line ${lineNum}: \`${trimmed}\`.`,
-        recommendation: "Fix quote syntax by using single set of matching double quotes.",
-        merged_source: "static",
-        senior_comment: `SyntaxError on line ${lineNum}: Clean up malformed string quotes and extra parentheses.`
-      });
+    // 0. Universal Python / JS Syntax Error Check (malformed quotes, missing opening/closing quotes, bad parens)
+    if (/logger\.(info|debug|warning|error|exception)|print|console\.log/i.test(cleanLine)) {
+      const match = cleanLine.match(/(logger\.(?:info|debug|warning|error|exception)|print|console\.log)\s*\(\s*\(?\s*(.*?)\s*\)?\s*\)/i);
+      if (match) {
+        const argText = match[2].trim();
+        const quoteCount = (argText.match(/["']/g) || []).length;
+        // Flag odd number of quotes (unbalanced quotes) or double/malformed quotes
+        if (quoteCount % 2 !== 0 || /""/.test(argText) || /^[a-zA-Z0-9_\s]+["']$/.test(argText) || /^["'][a-zA-Z0-9_\s]+$/.test(argText)) {
+          findings.push({
+            line: lineNum,
+            severity: "CRITICAL",
+            category: "SYNTAX_ERROR",
+            title: "Python Syntax Error: Malformed String Literal",
+            description: `SyntaxError: unterminated or malformed string literal detected on line ${lineNum}: \`${trimmed}\`.`,
+            recommendation: "Fix quote syntax by properly enfolding strings in matching double quotes.",
+            merged_source: "static",
+            senior_comment: `SyntaxError on line ${lineNum}: Malformed string quote syntax in function call.`
+          });
+        }
+      }
     }
 
     // 1. Early Return Bug inside Loop (e.g. return True inside for loop body)
