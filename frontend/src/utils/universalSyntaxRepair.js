@@ -18,40 +18,28 @@ export function repairCodeSyntax(code, language = "python") {
       return l;
     }
 
-    // Fix malformed logger/print statements with extra quotes or parens
+    // Fix logger.info(...) or print(...) with missing opening/closing quotes or extra parens
     if (/logger\.(info|debug|warning|error|exception)|print/i.test(l)) {
-      l = l.replace(/(logger\.(?:info|debug|warning|error|exception)|print)\s*\(\s*\(?\s*["']*(.*?)["']*\s*\)?\s*\)/gi, (match, fn, text) => {
-        const cleanText = text.replace(/["']/g, '');
+      l = l.replace(/(logger\.(?:info|debug|warning|error|exception)|print)\s*\(\s*\(?\s*([^()]*?)\s*\)?\s*\)/gi, (match, fn, text) => {
+        const cleanText = text.replace(/["']/g, '').trim();
         const indentPos = line.search(/\S/);
         const indentStr = " ".repeat(Math.max(0, indentPos >= 0 ? indentPos : 0));
-        return `${indentStr}${fn}("${cleanText}")`;
+        
+        if (cleanText) {
+          return `${indentStr}${fn}("${cleanText}")`;
+        }
+        return `${indentStr}${fn}("")`;
       });
     }
+
+    // Fix general unclosed or malformed quotes in function call arguments like foo(hello") or foo("hello)
+    l = l.replace(/\(\s*([a-zA-Z0-9_\s!\?.,-]+)["']\s*\)/g, '("$1")'); // (hello") -> ("hello")
+    l = l.replace(/\(\s*["']([a-zA-Z0-9_\s!\?.,-]+)\s*\)/g, '("$1")'); // ("hello) -> ("hello")
 
     // Clean up double quotes like ""hello"" or ""hello" or "hello""
     l = l.replace(/""([^"'\n]+)""?/g, '"$1"');
     l = l.replace(/"([^"'\n]+)""/g, '"$1"');
     l = l.replace(/''([^"'\n]+)''?/g, "'$1'");
-
-    // Fix unbalanced double quotes on single line
-    const doubleQuoteCount = (l.match(/"/g) || []).length;
-    if (doubleQuoteCount % 2 !== 0) {
-      if (l.trim().endsWith('"')) {
-        l = l.replace(/"$/, '');
-      } else {
-        l = l + '"';
-      }
-    }
-
-    // Fix unbalanced single quotes on single line
-    const singleQuoteCount = (l.match(/'/g) || []).length;
-    if (singleQuoteCount % 2 !== 0) {
-      if (l.trim().endsWith("'")) {
-        l = l.replace(/'$/, '');
-      } else {
-        l = l + "'";
-      }
-    }
 
     // Fix Python missing colons on block statements
     if (language === 'python') {
